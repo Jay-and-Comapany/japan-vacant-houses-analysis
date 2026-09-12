@@ -54,12 +54,26 @@ python3 -B -m unittest -q test_analyst
 
 列名と数値の対応、集計行の除外、区名、初年・終年、欠測と0の区別、JSON出力をオフラインで検査します。検査合格は元統計の全セル一致や事故削減効果を保証しません。
 
-## 関連する有料データ
+## 関連する有料データ・個別リサーチ
 
 - [商用データカタログ](https://jay-portal.pages.dev/catalog/#akiya)
-- [空き家データパックの販売ページ](https://note.com/d_jay0808/n/n36f5fd9e6753)
+- [空き家データパックの販売ページ](https://note.com/d_jay0808/n/n36f5fd9e6753)（Note有料記事、全国1,741市区町村 住宅・土地統計調査データパック、1,480円）
 
 同梱サンプルと無料コードだけで上のコマンドを試せます。有料版を購入する場合は、販売ページで収録地域、ファイル、価格と利用条件を確認してください。
+
+### 個別分析・事業判断メモ（任意・10,000円〜）
+
+特定自治体・地域ごとの空き家動向分析、住宅統計の独自クロス集計、または不動産投資・自治体政策検討用の事業判断メモの作成が必要な場合は、ココナラの公開情報リサーチ・分析サービスにて個別対応を受け付けています。
+
+- **ココナラ出品サービス**: [公開情報を調べ、事業判断メモを作成します (Coconala Service 4375895)](https://coconala.com/services/4375895)（10,000円〜）
+- **対象**: 不動産事業者、自治体担当者、研究者、空き家活用ビジネス検討者
+- **提供内容**: 公開統計の検証・抽出、地域別クロス集計、3〜5ページの一次情報根拠付き判断メモ（PDF/Markdown/Excel）
+- **取引形態**: ココナラの規約に基づき、事前見積もり・事前相談の上で受託します。
+
+### Commercial Data & Custom Research Inquiries
+
+- **Nationwide Data Pack (1,741 Municipalities)**: [Note Edition (JPY 1,480)](https://note.com/d_jay0808/n/n36f5fd9e6753)
+- **Bespoke Research & Decision Memo**: If you need custom statistical screening, municipal cross-tabulation, or an investment/policy decision memo, you can request custom research via our verified storefront: [Coconala Research & Analysis Service](https://coconala.com/services/4375895) (starting from JPY 10,000).
 
 ## 出典・ライセンス
 
