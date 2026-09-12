@@ -25,14 +25,15 @@ def safe_float(v, default=None):
     if not v_str:
         return default
     try:
-        return float(v_str)
+        value = float(v_str)
+        return value if math.isfinite(value) else default
     except ValueError:
         return default
 
 
 def safe_int(v, default=None):
     f = safe_float(v, default)
-    return int(f) if f is not None else default
+    return int(f) if f is not None and f >= 0 and int(f) == f else default
 
 
 def analyze_timeseries(filepath, target_pref=None, metric="vacant_total"):
@@ -45,11 +46,9 @@ def analyze_timeseries(filepath, target_pref=None, metric="vacant_total"):
 
     # Find columns matching {metric}_YYYY
     prefix = f"{metric}_"
-    metric_cols = [c for c in reader.fieldnames if c.startswith(prefix) and c[len(prefix):].isdigit()]
+    metric_cols = [c for c in (reader.fieldnames or []) if c.startswith(prefix) and c[len(prefix):].isdigit()]
     if not metric_cols:
-        # Fallback to any vacant_total_YYYY
-        prefix = "vacant_total_"
-        metric_cols = [c for c in reader.fieldnames if c.startswith(prefix) and c[len(prefix):].isdigit()]
+        raise ValueError(f"No year columns found for requested metric: {metric}")
 
     metric_cols.sort(key=lambda c: int(c[len(prefix):]))
 
@@ -70,7 +69,7 @@ def analyze_timeseries(filepath, target_pref=None, metric="vacant_total"):
         for col in metric_cols:
             y = int(col[len(prefix):])
             val = safe_float(r.get(col))
-            if val is not None and val > 0:
+            if val is not None and val >= 0:
                 history.append((y, val))
                 if first_year is None:
                     first_year = y
@@ -78,16 +77,16 @@ def analyze_timeseries(filepath, target_pref=None, metric="vacant_total"):
                 last_year = y
                 last_val = val
 
-        if first_year and last_year and first_year != last_year and first_val and first_val > 0:
+        comparable = first_year is not None and last_year > first_year
+        ratio = cagr = growth_pct = total_change = None
+        if comparable:
+            total_change = last_val - first_val
+        if comparable and first_val > 0:
             years_diff = last_year - first_year
             ratio = last_val / first_val
             cagr = (math.pow(ratio, 1.0 / years_diff) - 1.0) * 100.0
             total_change = last_val - first_val
             growth_pct = (ratio - 1.0) * 100.0
-        else:
-            cagr = 0.0
-            growth_pct = 0.0
-            total_change = 0.0
 
         results.append({
             "area_name": area_name,
@@ -98,10 +97,10 @@ def analyze_timeseries(filepath, target_pref=None, metric="vacant_total"):
             "first_val": first_val,
             "last_year": last_year,
             "last_val": last_val,
-            "growth_ratio": round(last_val / first_val, 2) if (first_val and first_val > 0) else None,
-            "growth_pct": round(growth_pct, 1),
-            "cagr_pct": round(cagr, 2),
-            "total_change": round(total_change, 1),
+            "growth_ratio": round(ratio, 2) if ratio is not None else None,
+            "growth_pct": round(growth_pct, 1) if growth_pct is not None else None,
+            "cagr_pct": round(cagr, 2) if cagr is not None else None,
+            "total_change": round(total_change, 1) if total_change is not None else None,
             "history": history,
         })
 
@@ -116,24 +115,36 @@ def analyze_municipalities(filepath, min_dwellings=5000, sort_key="vacant_rate_p
         reader = csv.DictReader(f)
         rows = list(reader)
 
+    required = {"level", "dwellings_total", sort_key}
+    missing = required - set(reader.fieldnames or [])
+    if missing:
+        raise ValueError(f"Missing required municipality columns: {', '.join(sorted(missing))}")
+
     records = []
     for r in rows:
+        if r.get("level") not in {"city", "ward"}:
+            continue
         dwellings = safe_int(r.get("dwellings_total"))
-        if dwellings is not None and dwellings < min_dwellings:
+        if dwellings is None or dwellings <= 0 or dwellings < min_dwellings:
             continue
 
-        v_total = safe_int(r.get("vacant_total"), 0)
-        v_rate = safe_float(r.get("vacant_rate_pct"), 0.0)
-        v_other = safe_int(r.get("vacant_other"), 0)
-        v_other_rate = safe_float(r.get("vacant_other_rate_pct"), 0.0)
-        v_rent = safe_int(r.get("vacant_for_rent"), 0)
-        v_sale = safe_int(r.get("vacant_for_sale"), 0)
-        v_sec = safe_int(r.get("vacant_secondary"), 0)
+        selected_rate = safe_float(r.get(sort_key))
+        if selected_rate is None or not 0 <= selected_rate <= 100:
+            continue
+        v_total = safe_int(r.get("vacant_total"))
+        v_rate = safe_float(r.get("vacant_rate_pct"))
+        v_other = safe_int(r.get("vacant_other"))
+        v_other_rate = safe_float(r.get("vacant_other_rate_pct"))
+        v_rent = safe_int(r.get("vacant_for_rent"))
+        v_sale = safe_int(r.get("vacant_for_sale"))
+        v_sec = safe_int(r.get("vacant_secondary"))
 
         records.append({
             "area_code": r.get("area_code", ""),
             "pref_name": r.get("pref_name", ""),
             "city_name": r.get("city_name", ""),
+            "ward_name": r.get("ward_name", ""),
+            "full_name": r.get("full_name", ""),
             "level": r.get("level", ""),
             "dwellings_total": dwellings,
             "vacant_total": v_total,
@@ -150,29 +161,42 @@ def analyze_municipalities(filepath, min_dwellings=5000, sort_key="vacant_rate_p
 
 
 def print_timeseries_table(results, limit=20):
-    print(f"{'地域 / 都道府県':<12} | {'指標':<12} | {'1958/初期':>12} | {'2023最新':>12} | {'倍率':>8} | {'全成長率':>10} | {'CAGR(年平均)':>12}")
+    print(f"{'地域 / 都道府県':<12} | {'指標':<12} | {'初年':>4} | {'終年':>4} | {'初年値':>12} | {'終年値':>12} | {'倍率':>8} | {'全成長率':>10} | {'CAGR(年平均)':>12}")
     print("-" * 84)
     for r in results[:limit]:
         f_val_str = f"{r['first_val']:,}" if r['first_val'] is not None else "-"
         l_val_str = f"{r['last_val']:,}" if r['last_val'] is not None else "-"
         ratio_str = f"{r['growth_ratio']}x" if r['growth_ratio'] is not None else "-"
-        growth_str = f"+{r['growth_pct']}%" if r['growth_pct'] > 0 else f"{r['growth_pct']}%"
-        cagr_str = f"+{r['cagr_pct']}%/yr" if r['cagr_pct'] > 0 else f"{r['cagr_pct']}%/yr"
-        print(f"{r['area_name']:<12} | {r['metric']:<12} | {f_val_str:>12} | {l_val_str:>12} | {ratio_str:>8} | {growth_str:>10} | {cagr_str:>12}")
+        growth_str = f"{r['growth_pct']:+}%" if r['growth_pct'] is not None else "-"
+        cagr_str = f"{r['cagr_pct']:+}%/yr" if r['cagr_pct'] is not None else "-"
+        first = r['first_year'] if r['first_year'] is not None else "-"
+        last = r['last_year'] if r['last_year'] is not None else "-"
+        print(f"{r['area_name']:<12} | {r['metric']:<12} | {first:>4} | {last:>4} | {f_val_str:>12} | {l_val_str:>12} | {ratio_str:>8} | {growth_str:>10} | {cagr_str:>12}")
 
 
 def print_municipalities_table(records, sort_key, limit=20):
-    header_name = "空き家率(%)" if sort_key == "vacant_rate_pct" else "放置空き家率(%)"
-    print(f"{'順位':<4} | {'都道府県':<8} | {'市区町村':<14} | {'総住宅数':>10} | {'空き家総数':>10} | {header_name:>12} | {'放置空き家':>10} | {'放置率(%)':>10}")
+    print(f"{'順位':<4} | {'地域コード':<6} | {'都道府県':<8} | {'市区町村・区':<14} | {'総住宅数':>10} | {'空き家総数':>10} | {'空き家率(%)':>12} | {'その他空き家':>10} | {'その他空き家率(%)':>12}")
     print("-" * 96)
     for idx, r in enumerate(records[:limit], 1):
         d_str = f"{r['dwellings_total']:,}" if r['dwellings_total'] is not None else "-"
-        v_str = f"{r['vacant_total']:,}"
-        vr_str = f"{r['vacant_rate_pct']:.2f}%"
-        vo_str = f"{r['vacant_other']:,}"
-        vor_str = f"{r['vacant_other_rate_pct']:.2f}%"
-        city_display = r['city_name'] if r['city_name'] else "(県全体)"
-        print(f"{idx:<4} | {r['pref_name']:<8} | {city_display:<14} | {d_str:>10} | {v_str:>10} | {vr_str:>12} | {vo_str:>10} | {vor_str:>10}")
+        v_str = f"{r['vacant_total']:,}" if r['vacant_total'] is not None else "-"
+        vr_str = f"{r['vacant_rate_pct']:.2f}%" if r['vacant_rate_pct'] is not None else "-"
+        vo_str = f"{r['vacant_other']:,}" if r['vacant_other'] is not None else "-"
+        vor_str = f"{r['vacant_other_rate_pct']:.2f}%" if r['vacant_other_rate_pct'] is not None else "-"
+        city_display = r['city_name'] or r['ward_name'] or r['full_name'] or r['area_code']
+        print(f"{idx:<4} | {r['area_code']:<6} | {r['pref_name']:<8} | {city_display:<14} | {d_str:>10} | {v_str:>10} | {vr_str:>12} | {vo_str:>10} | {vor_str:>12}")
+
+
+def print_ranking_scope(filepath):
+    with open(filepath, encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    local = [r for r in rows if r.get("level") in {"city", "ward"}]
+    prefs = sorted({r.get("pref_name", "") for r in local} - {""})
+    sample = os.path.realpath(filepath) == os.path.realpath(DEFAULT_MUNICIPALITIES)
+    label = "同梱サンプル" if sample else "指定CSV"
+    print(f"{label}: 入力{len(rows)}行、市区町村・区{len(local)}行、{len(prefs)}都道府県。", file=sys.stderr)
+    print("入力に含まれる地域だけの順位で、全国順位ではありません。市と内包する区は別行です。", file=sys.stderr)
+    print("その他空き家は賃貸・売却用及び二次的住宅を除く区分です。管理放棄・危険性の判定ではありません。", file=sys.stderr)
 
 
 def main():
@@ -193,7 +217,7 @@ def main():
     parser.add_argument("--muni-csv", default=DEFAULT_MUNICIPALITIES,
                         help="Path to municipality details CSV file")
     parser.add_argument("--sort", choices=["total", "other"], default="total",
-                        help="Sorting metric: 'total' for vacant_rate_pct, 'other' for vacant_other_rate_pct (放置空き家)")
+                        help="Sorting metric: 'total' for vacant_rate_pct, 'other' for vacant_other_rate_pct (その他の空き家)")
     parser.add_argument("--min-dwellings", type=int, default=5000,
                         help="Filter out small municipalities with fewer than N total dwellings (default: 5000)")
     parser.add_argument("--pref", default=None,
@@ -204,24 +228,27 @@ def main():
                         help="Output format (default: table)")
 
     args = parser.parse_args()
+    if args.limit < 1 or args.min_dwellings < 0:
+        parser.error("--limit must be positive and --min-dwellings must be nonnegative")
 
     if args.mode == "timeseries":
         results = analyze_timeseries(args.timeseries_csv, target_pref=args.pref)
         if args.format == "json":
-            print(json.dumps(results[:args.limit], ensure_ascii=False, indent=2))
+            print(json.dumps(results[:args.limit], ensure_ascii=False, indent=2, allow_nan=False))
         else:
-            print(f"\n=== 日本全国・都道府県別 空き家65年間推移・CAGR成長分析 (1958〜2023年) ===\n")
+            print(f"\n=== 入力時系列の空き家数・CAGR分析（各行の初年・終年を使用） ===\n")
             print_timeseries_table(results, limit=args.limit)
             print(f"\n※ 出典: 総務省統計局「住宅・土地統計調査」（昭和33年〜令和5年）")
             print(f"※ 商用データカタログ: https://jay-portal.pages.dev/catalog/#akiya\n")
     else:
         sort_col = "vacant_other_rate_pct" if args.sort == "other" else "vacant_rate_pct"
         records = analyze_municipalities(args.muni_csv, min_dwellings=args.min_dwellings, sort_key=sort_col, reverse=True)
+        print_ranking_scope(args.muni_csv)
         if args.format == "json":
-            print(json.dumps(records[:args.limit], ensure_ascii=False, indent=2))
+            print(json.dumps(records[:args.limit], ensure_ascii=False, indent=2, allow_nan=False))
         else:
-            sort_desc = "放置空き家率（その他の空き家率）" if args.sort == "other" else "空き家総率"
-            print(f"\n=== 令和5年(2023年) 市区町村別 {sort_desc} 上位ランキング (総住宅数 {args.min_dwellings:,}戸以上) ===\n")
+            sort_desc = "その他空き家率" if args.sort == "other" else "空き家総率"
+            print(f"\n=== 入力CSV内 市区町村・区別 {sort_desc} 上位ランキング (総住宅数 {args.min_dwellings:,}戸以上) ===\n")
             print_municipalities_table(records, sort_key=sort_col, limit=args.limit)
             print(f"\n※ 出典: 総務省統計局「令和5年住宅・土地統計調査」公表データ")
             print(f"※ 商用データカタログ: https://jay-portal.pages.dev/catalog/#akiya\n")
