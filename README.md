@@ -70,12 +70,6 @@ python3 -B -m unittest -q test_analyst
 - **提供内容**: 公開統計の検証・抽出、地域別クロス集計、3〜5ページの一次情報根拠付き判断メモ（PDF/Markdown/Excel）
 - **取引形態**: ココナラの規約に基づき、事前見積もり・事前相談の上で受託します。
 
-## Related service page (read-back) — CSV tidy 4413300
-
-【PR】Jay & Co. is the seller if an order is placed on the linked Coconala page. This section was drafted with generative AI.
-
-On 2026-09-22 a public read-back of https://coconala.com/services/4413300 returned HTTP 200. Observed title includes「表記ゆれ統一・重複削除などCSV整理します」. Observed price 1,500円. The page states work uses generative AI (Claude) and Python, without human double-check, and that sales have not started yet. This repository’s free code and bundled CSV samples do not require that service.
-
 ### Commercial Data & Custom Research Inquiries
 
 - **Nationwide Data Pack (1,741 Municipalities)**: [Note Edition (JPY 1,480)](https://note.com/d_jay0808/n/n36f5fd9e6753)
