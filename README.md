@@ -56,7 +56,7 @@ python3 -B -m unittest -q test_analyst
 
 ## 関連する有料データ・個別リサーチ
 
-- [商用データカタログ](https://jay-portal.pages.dev/catalog/#akiya)
+- [空き家データパック（note）](https://note.com/d_jay0808/n/n36f5fd9e6753)
 - [空き家データパックの販売ページ](https://note.com/d_jay0808/n/n36f5fd9e6753)（Note有料記事、全国1,741市区町村 住宅・土地統計調査データパック、1,480円）
 
 同梱サンプルと無料コードだけで上のコマンドを試せます。有料版を購入する場合は、販売ページで収録地域、ファイル、価格と利用条件を確認してください。
